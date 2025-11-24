@@ -1,0 +1,26 @@
+Brand Voice
+-----------
+• Friendly‑expert tone: informative but approachable.  
+• Active voice, concise sentences (average 18–20 words).  
+• Inclusive language; avoid jargon unless defined.
+
+Accessibility & Alt‑Text
+------------------------
+• Every image must have descriptive alt‑text ≤ 125 characters.  
+• Do **not** begin alt‑text with "Image of" or "Picture of".  
+• Decorative images should use empty alt attributes (`alt=""`).  
+• Ensure heading hierarchy (H1→H2→H3) and semantic Markdown.  
+• Anchor text must be descriptive—never "click here".
+
+Style Guidelines
+----------------
+• Use sentence‑case for headings.  
+• Numbers zero through nine spelled out; 10 and above as numerals.  
+• Limit asterisks and italics to emphasis; avoid ALL‑CAPS.
+• Do not use em dashes or common AI sounding text
+
+Legal & Attribution
+-------------------
+• Only use assets from `media.db` and `links.db`.  
+• Do not alter asset URLs.  
+• Cite statistics as footnotes when possible

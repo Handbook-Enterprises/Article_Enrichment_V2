@@ -1,0 +1,37 @@
+services:
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+  web:
+    image: python:3.13-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - ./config/.env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - USE_FLOW=1
+      - FLOW_REDIS_URL=redis://redis:6379/2
+    command: bash -lc "python -m pip install uv && uv sync && uv run uvicorn src.api.app:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - redis
+  worker:
+    image: python:3.13-slim
+    working_dir: /app
+    volumes:
+      - .:/app
+    env_file:
+      - ./config/.env
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/1
+      - USE_FLOW=1
+      - FLOW_REDIS_URL=redis://redis:6379/2
+    command: bash -lc "python -m pip install uv && uv sync && uv run celery -A worker.celery_app worker -l info"
+    depends_on:
+      - redis
