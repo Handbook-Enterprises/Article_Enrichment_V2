@@ -9,8 +9,7 @@ from shared.types import Selection, MediaSelection, LinkSelection, Place
 
 def _sanitize_selection(selection: Selection, keywords: List[str]) -> Selection:
     """Ensure anchors include provided keywords and avoid banned phrases.
-    Preserve LLM-provided anchors; if no keyword is present, APPEND a keyword
-    rather than replacing the anchor. Only replace when the anchor is banned/empty.
+    Only replace when the anchor is banned/empty.
     """
     klist = [k.strip() for k in keywords if k and k.strip()]
     if not klist:
@@ -41,7 +40,7 @@ def _sanitize_selection(selection: Selection, keywords: List[str]) -> Selection:
             )
             sanitized += 1
         else:
-            # Already compliant; keep as-is
+            #  keep as-is 
             new_links.append(
                 LinkSelection(id=l.id, url=l.url, anchor=anchor, keyword=kw, place=l.place)
             )
@@ -186,7 +185,7 @@ def _fallback_selection(_article_text: str, profile: Dict, keywords: List[str], 
     context = context_bucket[1] if len(context_bucket) > 1 else (context_bucket[0] if context_bucket else hero)
     links = link_bucket[:2] if len(link_bucket) >= 2 else link_bucket
 
-    # Choose a section heading for context heuristically
+    # heading for context heuristically
     headings = [h.lower() for h in profile.get("headings", [])]
     target = None
     hints = [
@@ -241,10 +240,10 @@ def _fallback_selection(_article_text: str, profile: Dict, keywords: List[str], 
     return Selection(hero=hero_sel, context_item=context_sel, links=link_selections)
 
 
-def select_assets_with_llm(article_text: str, profile: Dict, keywords: List[str], candidates: Dict, brand_rules_text: str, model: str, offline: bool, previous_selection: Selection | None = None, reject_reasons: List[str] | None = None, avoid_urls: List[str] | None = None) -> Selection:
+def select_assets_with_llm(article_text: str, profile: Dict, keywords: List[str], candidates: Dict, brand_rules_text: str, model: str, offline: bool, previous_selection: Selection | None = None, reject_reasons: List[str] | None = None, avoid_urls: List[str] | None = None) -> tuple[Selection, float]:
     if offline:
         logging.info("LLM disabled or API key missing; using fallback deterministic selection")
-        return _fallback_selection(article_text, profile, keywords, candidates)
+        return _fallback_selection(article_text, profile, keywords, candidates), 0.0
 
     # Resolve effective model and debug flag from environment
     effective_model = model or os.getenv("OPENROUTER_MODEL") or "openai/gpt-4o-mini"
@@ -266,17 +265,33 @@ def select_assets_with_llm(article_text: str, profile: Dict, keywords: List[str]
         "temperature": float(os.getenv("LLM_TEMPERATURE", "0.2")),
     }
 
+    estimated_cost = 0.0
     try:
         logging.info(f"LLM config | model={effective_model} | debug={'on' if debug_flag else 'off'} | prompt_mode={os.getenv('PROMPT_MODE','both').strip().lower()}")
-        # Show exactly what we're sending no auth
+        # Show exactly what we're sending (not auth) when debug is on
         if debug_flag:
             logging.info("LLM request body (no auth):\n%s", json.dumps(body, ensure_ascii=False, indent=2))
             logging.info("LLM prompt payload (user content):\n%s", prompt)
         resp = httpx.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body, timeout=int(os.getenv("LLM_TIMEOUT", "60")))
         resp.raise_for_status()
+        
+        response_json = resp.json()
+        if 'usage' in response_json:
+            usage = response_json['usage']
+            prompt_tokens = usage.get('prompt_tokens', 0)
+            completion_tokens = usage.get('completion_tokens', 0)
+            total_tokens = usage.get('total_tokens', 0)
+            
+            estimated_cost = (prompt_tokens / 1_000_000) * 0.15 + (completion_tokens / 1_000_000) * 0.60
+            
+            logging.info(
+                f"LLM cost tracking | model={effective_model} | "
+                f"prompt_tokens={prompt_tokens} | completion_tokens={completion_tokens} | "
+                f"total_tokens={total_tokens} | estimated_cost=${estimated_cost:.6f}"
+            )
+        
         logging.info("LLM response received; parsing JSON")
-        content = resp.json()["choices"][0]["message"]["content"].strip()
-      
+        content = response_json["choices"][0]["message"]["content"].strip()
         if debug_flag:
             logging.info("LLM raw content (as received):\n%s", content)
         data = json.loads(content)
@@ -305,8 +320,8 @@ def select_assets_with_llm(article_text: str, profile: Dict, keywords: List[str]
         # Optional anchor sanitization controlled via .env ANCHOR_SANITIZE
         anchor_sanitize = (os.getenv("ANCHOR_SANITIZE", "0").strip().lower() in ("1", "true", "yes", "on"))
         if anchor_sanitize:
-            return _sanitize_selection(selection, keywords)
-        return selection
+            selection = _sanitize_selection(selection, keywords)
+        return selection, estimated_cost
     except Exception as e:
         # If parsing failed, show the raw content to aid debugging (debug only)
         try:
@@ -318,4 +333,4 @@ def select_assets_with_llm(article_text: str, profile: Dict, keywords: List[str]
         except Exception:
             logging.error("LLM selection failed: %s (raw content unavailable)", e)
         logging.warning("Falling back to deterministic selection")
-        return _fallback_selection(article_text, profile, keywords, candidates)
+        return _fallback_selection(article_text, profile, keywords, candidates), 0.0

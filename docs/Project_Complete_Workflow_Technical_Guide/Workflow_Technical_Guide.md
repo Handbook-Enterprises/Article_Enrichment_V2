@@ -36,7 +36,7 @@ The Content Enrichment Pipeline is an AI-powered system that automatically enhan
 
 ### Core Languages & Frameworks
 
-#### **Python 3.11+**
+#### **Python 3.13**
 - **Why**: Type hints, performance improvements, pattern matching
 - **Usage**: Entire backend codebase
 - **Key Features Used**: 

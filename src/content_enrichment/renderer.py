@@ -5,13 +5,29 @@ from shared.types import Selection
 
 SECTION_RE = re.compile(r"^(#{1,6})\s+(.*)$")
 
-# Find the index of the first H1 heading in the document.
+def _strip_markdown_formatting(text: str) -> str:
+    s = re.sub(r"!\[([^\]]*)\]\(([^)]*)\)", r"\1", text or "")
+    s = re.sub(r"\[([^\]]+)\]\(([^)]*)\)", r"\1", s)
+    s = re.sub(r"`+", "", s)
+    s = re.sub(r"\*\*|__|\*|_", "", s)
+    s = re.sub(r"^\s*#{1,6}\s*", "", s, flags=re.MULTILINE)
+    s = re.sub(r"^\s*>\s*", "", s, flags=re.MULTILINE)
+    return s
+
+def _normalize_url(u: str) -> str:
+    return re.sub(r"\s+", "", (u or ""))
+
+def _extract_urls(text: str) -> Set[str]:
+    urls = set()
+    for m in re.finditer(r"\[[^\]]+\]\(([^)]+)\)", text, flags=re.S):
+        urls.add(_normalize_url(m.group(1)))
+    return urls
+
 def _find_h1_index(lines: List[str]) -> int:
     for i, line in enumerate(lines):
         if line.startswith("# "):
             return i
     return -1
-
 
 def _find_heading_index(lines: List[str], heading_text: str) -> int:
     if not heading_text:
@@ -86,7 +102,6 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
         ranges: List[Tuple[int, int]] = []
         i = start
         while i < end:
-          
             while i < end and (lines[i].strip() == "" or _is_media_line(lines[i])):
                 i += 1
             if i >= end:
@@ -94,14 +109,12 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
             
             # If this is a list item, treat it as a single-line paragraph
             if _is_list_item(lines[i]):
-               
                 j = i + 1
                 while j < end and lines[j].strip() != "" and not _is_media_line(lines[j]) and not _is_list_item(lines[j]) and lines[j].startswith('  '):
                     j += 1
                 ranges.append((i, j))
                 i = j
             else:
-              
                 j = i
                 while j < end and (lines[j].strip() != "" and not _is_media_line(lines[j]) and not _is_list_item(lines[j])):
                     j += 1
@@ -111,35 +124,6 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
 
     def _tokenize(s: str) -> List[str]:
         return re.findall(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)?", (s or "").lower())
-
-    def _normalized_with_map(s: str) -> Tuple[str, List[int]]:
-        out: List[str] = []
-        mapping: List[int] = []
-        prev_space = False
-        for i, ch in enumerate(s or ""):
-            if ch in "*_`":
-                continue
-            if ch in "\u2010\u2011\u2012\u2013\u2014\u2212":
-                ch2 = "-"
-            else:
-                ch2 = ch
-            if ch2.isspace():
-                if prev_space:
-                    continue
-                out.append(" ")
-                mapping.append(i)
-                prev_space = True
-            else:
-                out.append(ch2)
-                mapping.append(i)
-                prev_space = False
-        return ("".join(out).lower(), mapping)
-
-    def _normalize_anchor(a: str) -> str:
-        a = a or ""
-        a = a.replace("\u2010", "-").replace("\u2011", "-").replace("\u2012", "-").replace("\u2013", "-").replace("\u2014", "-").replace("\u2212", "-")
-        a = re.sub(r"\s+", " ", a)
-        return a.strip().lower()
 
     def _split_sentences(text: str) -> List[Tuple[int, int]]:
         spans: List[Tuple[int, int]] = []
@@ -189,24 +173,36 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
                 lines.insert(idx, f"[{anchor}]({url})")
             logging.info(f"Renderer | no paragraphs; link inserted inline at section start heading='{target_heading}' url={url}")
             return
-        anchor_lower_global = anchor.lower()
-        chosen_idx = None
-        for idx, (pstart, pend) in enumerate(pranges):
-            if used_paragraphs and idx in used_paragraphs:
-                continue
-            paragraph = " ".join(lines[pstart:pend])
-            plower = paragraph.lower()
-            pos = plower.find(anchor_lower_global)
-            if pos >= 0:
-                endpos = pos + len(anchor_lower_global)
-                before_char = plower[pos-1] if pos > 0 else ' '
-                after_char = plower[endpos] if endpos < len(plower) else ' '
-                if (not before_char.isalnum()) and (not after_char.isalnum() or after_char in ' .,;:!?-—'):
+        # Smart paragraph selection: Try hint -> Search all -> Fallback to hint/score
+        chosen_idx = -1
+        
+        def _check_anchor_in_par(idx: int) -> bool:
+            pstart, pend = pranges[idx]
+            text = " ".join(lines[pstart:pend])
+            return anchor.lower() in _strip_markdown_formatting(text).lower()
+
+        # 1. Try hint paragraph
+        if hint_par_idx is not None and 0 <= hint_par_idx < len(pranges) and (not used_paragraphs or hint_par_idx not in used_paragraphs):
+            if _check_anchor_in_par(hint_par_idx):
+                chosen_idx = hint_par_idx
+            else:
+                logging.info(f"DEBUG | Anchor '{anchor}' not found in hint paragraph {hint_par_idx}, searching section...")
+
+        # 2. If not found in hint, search all other paragraphs
+        if chosen_idx == -1:
+            for idx in range(len(pranges)):
+                if used_paragraphs and idx in used_paragraphs:
+                    continue
+                if _check_anchor_in_par(idx):
                     chosen_idx = idx
+                    logging.info(f"DEBUG | Found anchor '{anchor}' in paragraph {idx}")
                     break
-        if chosen_idx is None:
+        
+        # 3. Fallback: Use hint (if valid) or best scoring paragraph
+        if chosen_idx == -1:
             if hint_par_idx is not None and 0 <= hint_par_idx < len(pranges) and (not used_paragraphs or hint_par_idx not in used_paragraphs):
                 chosen_idx = hint_par_idx
+                logging.info(f"DEBUG | Anchor not found anywhere, falling back to hint paragraph {chosen_idx}")
             else:
                 best_idx = None
                 best_score = -1
@@ -221,39 +217,22 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
                 if best_idx is None:
                     best_idx = 0
                 chosen_idx = best_idx
+                logging.info(f"DEBUG | Anchor not found anywhere, falling back to scored paragraph {chosen_idx}")
         pstart, pend = pranges[chosen_idx]
         original_lines = lines[pstart:pend]
-     
         paragraph = " ".join(original_lines)
         paragraph_lower = paragraph.lower()
-        if url in paragraph:
-            logging.info(
-                f"Renderer | link already present in target paragraph section='{target_heading}' paragraph_idx={chosen_idx} url={url}"
-            )
-            return
         
-     
-     
         anchor_lower = anchor.lower()
         inserted = False
         
         logging.info(f"DEBUG | Searching for anchor='{anchor}' in paragraph (len={len(paragraph)})")
         
-        norm_para, idx_map = _normalized_with_map(paragraph)
-        anchor_norm = _normalize_anchor(anchor)
-        pos_norm = norm_para.find(anchor_norm)
-        pos = -1
-        if pos_norm >= 0:
-            start_orig = idx_map[pos_norm]
-            end_orig = idx_map[pos_norm + len(anchor_norm) - 1] + 1
-            pos = start_orig
-            endpos = end_orig
-        else:
-            pos = paragraph_lower.find(anchor_lower)
-            endpos = pos + len(anchor_lower) if pos >= 0 else -1
+        pos = paragraph_lower.find(anchor_lower)
         if pos >= 0:
             logging.info(f"DEBUG | Found anchor in paragraph at position {pos}")
             # Check word boundaries
+            endpos = pos + len(anchor_lower)
             before_char = paragraph_lower[pos-1] if pos > 0 else ' '
             after_char = paragraph_lower[endpos] if endpos < len(paragraph_lower) else ' '
             
@@ -276,34 +255,7 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
                     rest_after = rest_after[2:]
                 
                 new_paragraph = f"{before}[{middle}]({url}){possessive}{rest_after}"
-                
-                if len(original_lines) == 1:
-                    lines[pstart:pend] = [new_paragraph]
-                else:
-                    line_lengths = [len(line) for line in original_lines]
-                    link_text = f"[{middle}]({url}){possessive}"
-                    link_start = len(before)
-                    link_end = link_start + len(link_text)
-                    new_lines = []
-                    pos_in_new = 0
-                    for i, orig_len in enumerate(line_lengths):
-                        if i < len(line_lengths) - 1:
-                            target_end = min(pos_in_new + orig_len, len(new_paragraph))
-                            if target_end > link_start and pos_in_new < link_end:
-                                target_end = max(target_end, link_end)
-                                target_end = min(target_end, len(new_paragraph))
-                            split_point = target_end
-                            if split_point < len(new_paragraph):
-                                while split_point < len(new_paragraph) and not new_paragraph[split_point-1].isspace() and not new_paragraph[split_point-1] in ",;:!?" and split_point < len(new_paragraph):
-                                    split_point += 1
-                            new_lines.append(new_paragraph[pos_in_new:split_point])
-                            pos_in_new = split_point
-                        else:
-                            new_lines.append(new_paragraph[pos_in_new:])
-                    if len(new_lines) != len(original_lines) or any(not line.strip() for line in new_lines[:-1]) or any(('](' in l and ')' not in l) for l in new_lines):
-                        lines[pstart:pend] = [new_paragraph]
-                    else:
-                        lines[pstart:pend] = new_lines
+                lines[pstart:pend] = [new_paragraph]
                 
                 inserted = True
                 logging.info(
@@ -342,10 +294,7 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
                         new_sentence = f"{before}[{middle}]({url}){possessive}{rest_after}"
                         new_paragraph = f"{paragraph[:sent_start]}{new_sentence}{paragraph[sent_end:]}"
                         
-                        if len(original_lines) == 1:
-                            lines[pstart:pend] = [new_paragraph]
-                        else:
-                            lines[pstart:pend] = [new_paragraph]
+                        lines[pstart:pend] = [new_paragraph]
                         
                         inserted = True
                         logging.info(
@@ -378,12 +327,11 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
                         )
                         break
         
-     
         if not inserted:
             if pend > pstart:
                 last_line = lines[pend-1].rstrip()
                 tail_space = " " if last_line and not last_line.endswith(" ") else ""
-                lines[pend-1] = last_line + f"{tail_space}[{anchor}]({url})"
+                lines[pend-1] = last_line + f"{tail_space}([{anchor}]({url}))"
             logging.warning(
                 f"Renderer | link appended at end (anchor not found anywhere) section='{target_heading}' paragraph_idx={chosen_idx} anchor='{anchor}' url={url}"
             )
@@ -394,11 +342,9 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
         key = (target or "").strip().lower()
         used = used_by_section.setdefault(key, set())
 
-       
         start, end = _section_bounds(lines, target)
         pranges = _paragraph_ranges(lines, start, end)
         hint_idx = link.place.paragraph_index if (link.place and isinstance(link.place.paragraph_index, int)) else None
-
 
         hint_sent = link.place.sentence_index if (link.place and isinstance(link.place.sentence_index, int)) else None
         insert_link(link.anchor, link.url, target, link.keyword, hint_par_idx=hint_idx, hint_sent_idx=hint_sent, used_paragraphs=used)
@@ -407,7 +353,6 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
         if hint_idx is not None and 0 <= hint_idx < len(pranges) and hint_idx not in used:
             used.add(hint_idx)
         else:
-        
             best_idx = None
             best_score = -1
             for idx, (pstart, pend) in enumerate(pranges):
@@ -422,18 +367,20 @@ def render_enriched_markdown(original_markdown: str, selection: Selection, keywo
                 used.add(best_idx)
 
     full = "\n".join(lines)
+    present_urls = _extract_urls(full)
     for link in selection.links:
-        if link.url not in full:
+        if _normalize_url(link.url) not in present_urls:
             start, end = _section_bounds(lines, link.place.section_heading or selection.context_item.place.section_heading)
             lines.insert(end, f"[{link.anchor}]({link.url})")
             lines.insert(end, "")
             full = "\n".join(lines)
+            present_urls = _extract_urls(full)
             logging.info(
                 f"Renderer | link url missing post-insert; appended at end of section heading='{link.place.section_heading or selection.context_item.place.section_heading}' url={link.url}"
             )
 
     result = "\n".join(lines)
-
+    result = re.sub(r"\s*—\s*", " ", result)
     return result
 def _is_media_line(line: str) -> bool:
     s = (line or "").strip()
