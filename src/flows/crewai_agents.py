@@ -89,7 +89,7 @@ OUTPUT: Return a Selection object with hero, context_item, and exactly 2 links.
         previous_selection: Optional[Selection] = None,
         reject_reasons: Optional[List[str]] = None,
         avoid_urls: Optional[List[str]] = None
-    ) -> Selection:
+    ) -> tuple[Selection, float]:
         """Execute asset selection using existing llm_select logic"""
         return select_assets_with_llm(
             article_text=article_text,
@@ -160,7 +160,7 @@ OUTPUT: QAResult with accepted (bool), rating (0-10), reasons (list of findings)
         selection: Selection,
         keywords: List[str],
         brand_rules_text: str
-    ) -> QAResult:
+    ) -> tuple[QAResult, float]:
         """Execute QA verification using existing qa_ai logic"""
         return verify_with_ai(markdown, selection, keywords, brand_rules_text)
 
@@ -192,8 +192,8 @@ class EnrichmentCrew:
         previous_selection: Optional[Selection] = None,
         reject_reasons: Optional[List[str]] = None,
         avoid_urls: Optional[List[str]] = None
-    ) -> Selection:
-        """Run asset selection via CrewAI agent wrapper or direct function call"""
+    ) -> tuple[Selection, float]:
+      
         
         if self.crewai_enabled and self.selection_agent:
             # CrewAI mode: create task and crew
@@ -206,14 +206,13 @@ class EnrichmentCrew:
             
             logging.info("CrewAI | Running SelectionAgent task")
             # CrewAI manages orchestration, but actual logic runs via execute()
-            result = self.selection_agent.execute(
+            result, cost = self.selection_agent.execute(
                 article_text, profile, keywords, candidates, brand_rules_text,
                 model, offline, previous_selection, reject_reasons, avoid_urls
             )
             logging.info("CrewAI | SelectionAgent completed")
-            return result
+            return result, cost
         else:
-            # Direct mode: bypass CrewAI, call function directly
             return select_assets_with_llm(
                 article_text=article_text,
                 profile=profile,
@@ -232,9 +231,10 @@ class EnrichmentCrew:
         markdown: str,
         selection: Selection,
         keywords: List[str],
-        brand_rules_text: str
-    ) -> QAResult:
-        """Run QA verification via CrewAI agent wrapper or direct function call"""
+        brand_rules_text: str,
+        qa_mode: str = "auto"
+    ) -> tuple[QAResult, float]:
+        
         
         if self.crewai_enabled and self.qa_agent:
             # CrewAI mode: create task and crew
@@ -246,9 +246,21 @@ class EnrichmentCrew:
             )
             
             logging.info("CrewAI | Running QAAgent task")
-            result = self.qa_agent.execute(markdown, selection, keywords, brand_rules_text)
+            result, cost = self.qa_agent.execute(markdown, selection, keywords, brand_rules_text)
             logging.info("CrewAI | QAAgent completed")
-            return result
+            return result, cost
         else:
             # Direct mode: bypass CrewAI, call function directly
-            return verify_with_ai(markdown, selection, keywords, brand_rules_text)
+            if qa_mode == "ai" or (qa_mode == "auto" and os.getenv("OPENROUTER_API_KEY")):
+                return verify_with_ai(markdown, selection, keywords, brand_rules_text)
+            else:
+                from content_enrichment.qa import validate_output
+                try:
+                    validate_output(markdown, selection, keywords)
+                    result = QAResult(accepted=True, rating=10, reasons=["Fallback QA passed"])
+                    result.threshold = int(os.getenv("QA_THRESHOLD", "7"))
+                    return result, 0.0
+                except ValueError as e:
+                    result = QAResult(accepted=False, rating=0, reasons=[str(e)])
+                    result.threshold = int(os.getenv("QA_THRESHOLD", "7"))
+                    return result, 0.0

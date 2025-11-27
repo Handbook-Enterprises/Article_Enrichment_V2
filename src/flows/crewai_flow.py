@@ -24,7 +24,6 @@ class CrewFlow:
                 self.redis_client = None
                 self.enabled = False
         
-     
         api_key = os.getenv("OPENAI_API_KEY", "").strip()
         self.agent = None
         self.llm_enabled = False

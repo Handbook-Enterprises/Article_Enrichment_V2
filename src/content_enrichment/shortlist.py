@@ -86,7 +86,6 @@ def keyword_variants_dynamic(kw: str, article_tokens: List[str], asset_tokens: S
     # acronym \u2194 longform from text
     if base in pairs:
         variants.add(pairs[base])
-
     acro = initialism(base)
     if acro and (acro in asset_tokens or acro in article_tokens):
         variants.add(acro)
@@ -98,11 +97,10 @@ def keyword_variants_dynamic(kw: str, article_tokens: List[str], asset_tokens: S
         if len(cand) < 3:
             continue
         ratio = difflib.SequenceMatcher(None, cand, compact_base).ratio()
-        if ratio >= 0.82:  # conservative threshold
+        if ratio >= 0.82:
             variants.add(cand)
 
     return sorted({normalize_text(v) for v in variants if 1 <= len(v) <= 60})
-
 
 
 def build_article_profile(markdown: str) -> Dict:
@@ -132,12 +130,9 @@ def build_article_profile(markdown: str) -> Dict:
 def _score_asset(title: str, desc: str, tags: str, kset: Set[str], section_tokens: List[str]) -> float:
     tt = tokenize(title or "") + tokenize(desc or "") + tokenize(tags or "")
     tset = set(tt)
-  
     overlap_kw = len([t for t in tset if any((t in kv) or (kv in t) for kv in kset)])
-
     overlap_article = len(set(section_tokens) & tset)
     score = 2.0 * overlap_kw + 1.0 * overlap_article
-   
     title_hits = len(set(tokenize(title or "")) & kset)
     desc_hits = len(set(tokenize(desc or "")) & kset)
     if title_hits and desc_hits:
@@ -145,11 +140,9 @@ def _score_asset(title: str, desc: str, tags: str, kset: Set[str], section_token
     return score
 
 
-
 def shortlist_assets(article_text: str, keywords: List[str], media: Dict[str, List[Dict]], links: List[Dict]) -> Dict:
     tokens = tokenize(article_text)
 
- 
     acr_pairs = extract_acronym_pairs(article_text)
     asset_tokens = collect_asset_tokens(media, links)
     kset: Set[str] = set()

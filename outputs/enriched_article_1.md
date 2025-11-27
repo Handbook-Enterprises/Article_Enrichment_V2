@@ -1,15 +1,18 @@
 # Pedaling Toward the Future: How Electric Bicycles Are Transforming Urban Commuting
 
-![Raised cycle track in Denver with separated lane and secure e‑bike parking near light‑rail](https://upload.wikimedia.org/wikipedia/commons/6/6d/E-bike_infrastructure_Denver_2024.jpg)
+![Addmotor City Pro e‑bike parked in a downtown plaza with bike racks and pedestrians](https://upload.wikimedia.org/wikipedia/commons/5/55/Electric_bike_for_commuting.jpg)
 
 
-Electric bicycles—often shortened to *e‑bikes*—are no longer a niche gadget for tech enthusiasts.  
+Electric bicycles often shortened to *e‑bikes* are no longer a niche gadget for tech enthusiasts.  
 In cities from Amsterdam to Atlanta they have become a practical, sweat‑saving alternative to the car,
 the bus, and even the traditional pedal bike. Analysts at Deloitte estimate that by 2030 global sales of
 e‑bikes will outnumber electric cars by a factor of two to one, thanks to falling battery costs,
 supportive regulation, and a pandemic‑era boom in outdoor mobility.
 
 ## Why commuters are switching
+
+▶ [Five reasons to get an e‑bike, covering health and climate benefits](https://www.youtube.com/watch?v=mNWl3AUKNOk)
+
 
 At the top of the list sits **convenience**. An e‑bike’s motor provides just enough pedal assistance to
 flatten hills, shorten travel time, and eliminate the “office shirt sweat” problem that plagues
@@ -19,21 +22,11 @@ of ownership.
 
 ## Environmental upside
 
-The environmental numbers are compelling. The average passenger car emits about 251 g of CO₂ per 
-passenger‑kilometre when indirect lifecycle emissions are counted. An e‑bike consumes roughly 
-14 Wh / km, translating to just 3 g of CO₂ on a grid powered 50 % by renewables. One study by the 
-University of Leeds concluded that a mode‑shift of only 15 % of [urban car trips](https://www.unep.org/resources/report/electric-bicycles-and-urban-future) 
-to e‑bikes would cut metropolitan transport emissions by 11 %.
+The environmental numbers are compelling. The average passenger car emits about 251 g of CO₂ per passenger‑kilometre when indirect lifecycle emissions are counted. An e‑bike consumes roughly 14 Wh / km, translating to just 3 g of CO₂ on a grid powered 50 % by renewables. One study by the University of Leeds concluded that a mode‑shift of only 15 % of [urban car trips](https://www.unep.org/resources/report/electric-bicycles-and-urban-future) to e‑bikes would cut metropolitan transport emissions by 11 %.
 
 ## Infrastructure is catching up
 
-▶ [Local news segment on Boston’s plans to expand bike lanes and support e‑bikes](https://www.youtube.com/watch?v=iyt23JwYeXM)
-
-
-Infrastructure used to be the bottleneck. Painted lanes disappeared at every intersection and 
-battery‑charging points were rare. Yet municipal governments have accelerated investment: Paris 
-added 52 km of [protected cycle track](https://itdp.org/wp-content/uploads/2024/03/E-Bikes_Charging-Toward-Compact-Cycle-Cities_FINAL.pdf) 
-in 2024 alone, while Denver’s *E‑bike Rebate* scheme funded 8,300 new purchases tied to secure‑parking installations near light‑rail stations.
+Infrastructure used to be the bottleneck. Painted lanes disappeared at every intersection and battery‑charging points were rare. Yet municipal governments have accelerated investment: Paris added 52 km of [protected cycle track](https://itdp.org/wp-content/uploads/2024/03/E-Bikes_Charging-Toward-Compact-Cycle-Cities_FINAL.pdf) in 2024 alone, while Denver’s *E‑bike Rebate* scheme funded 8,300 new purchases tied to secure‑parking installations near light‑rail stations.
 
 ## Remaining barriers
 
@@ -49,5 +42,5 @@ in 2024 alone, while Denver’s *E‑bike Rebate* scheme funded 8,300 new purcha
 The next wave of innovation may come from lightweight solid‑state batteries and
 *vehicle‑to‑building* charging that turns parked e‑bikes into micro‑grid assets. If policymakers
 continue to prioritise protected lanes and provide purchase incentives, electric bicycles could occupy
-the sweet spot between walking and mass transit—delivering cleaner air and happier commuters in the
+the sweet spot between walking and mass transit delivering cleaner air and happier commuters in the
 process.

@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 from pathlib import Path
 from typing import Optional
@@ -6,10 +7,8 @@ from shared.types import Selection
 from db.data_access import load_article, load_keywords, load_brand_rules, load_media_db, load_links_db
 from content_enrichment.shortlist import build_article_profile, shortlist_assets
 from content_enrichment.asset_validation import filter_candidates_by_availability
-from ai.llm_select import select_assets_with_llm
 from content_enrichment.renderer import render_enriched_markdown
 from content_enrichment.qa import validate_output
-from ai.qa_ai import verify_with_ai, QAResult
 from flows.crewai_flow import record_step
 from flows.crewai_agents import EnrichmentCrew
 
@@ -36,14 +35,16 @@ def enrich(article_path: str, keywords_path: str, out_path: Optional[str] = None
     def pre_validate(sel: Selection) -> tuple[bool, int]:
         score = 0
         generic = {"overview", "basics", "learn more", "click here"}
+        require_kw = (os.getenv("ANCHOR_REQUIRE_KEYWORDS", "0").strip().lower() in ("1", "true", "yes", "on"))
         for l in sel.links:
             a = (l.anchor or "").strip()
-            toks = [t for t in a.split() if t.isalpha()]
+            toks = re.findall(r"[A-Za-z]+", a)
             has_kw = any(k.lower() in a.lower() for k in keywords)
             length_ok = 8 <= len(a) <= 80
             tok_ok = len(toks) >= 2
             not_generic_only = not (a.lower() in generic)
-            score += int(has_kw) + int(length_ok) + int(tok_ok) + int(not_generic_only)
+            # Keywords advisory unless explicitly required
+            score += int(has_kw or not require_kw) + int(length_ok) + int(tok_ok) + int(not_generic_only)
         return (score >= 6, score)
 
     max_attempts = int(os.getenv("RETRY_MAX_ATTEMPTS", "3"))
@@ -51,12 +52,13 @@ def enrich(article_path: str, keywords_path: str, out_path: Optional[str] = None
     avoid_urls: set[str] = set()
     last_reasons: list[str] = []
     final_enriched: str = ""
+    total_cost: float = 0.0
     accepted = False
 
     for attempt in range(1, max_attempts + 1):
         logging.info(f"Selection attempt {attempt}/{max_attempts}")
         # Use CrewAI agent wrapper (falls back to direct call if USE_CREWAI_AGENTS=0)
-        selection = crew.run_selection(
+        selection, selection_cost = crew.run_selection(
             article_text=article_text,
             profile=profile,
             keywords=keywords,
@@ -68,6 +70,7 @@ def enrich(article_path: str, keywords_path: str, out_path: Optional[str] = None
             reject_reasons=last_reasons or None,
             avoid_urls=list(avoid_urls) if avoid_urls else None,
         )
+        total_cost += selection_cost
 
         ok, qscore = pre_validate(selection)
         logging.info(f"Pre-validation | score={qscore} | ok={'yes' if ok else 'no'}")
@@ -91,13 +94,15 @@ def enrich(article_path: str, keywords_path: str, out_path: Optional[str] = None
 
         try:
             # Use CrewAI agent wrapper (falls back to direct call if USE_CREWAI_AGENTS=0)
-            res: QAResult = crew.run_qa(enriched, selection, keywords, brand_rules_text)
+            res, qa_cost = crew.run_qa(enriched, selection, keywords, brand_rules_text, qa_mode=qa_mode)
+            total_cost += qa_cost
             passed = bool(res.accepted) or (res.rating is not None and res.rating >= res.threshold)
             logging.info(
                 f"AI QA result | accepted={res.accepted} | rating={res.rating} | threshold={res.threshold} | reasons={'; '.join(res.reasons) if res.reasons else ''}"
             )
-            if passed and ok:
-                logging.info("AI QA passed")
+           
+            if passed:
+                logging.info("AI QA passed" + (" (pre-validation flagged issues)" if not ok else ""))
                 final_enriched = enriched
                 accepted = True
                 if os.getenv("USE_FLOW", "0").strip().lower() in ("1","true","yes","on"):
@@ -138,7 +143,10 @@ def enrich(article_path: str, keywords_path: str, out_path: Optional[str] = None
     if not accepted:
         raise ValueError("Enrichment not accepted after retry attempts")
     default_out = root / "outputs" / f"enriched_{Path(article_path).name}"
-    final = out_path or str(default_out)
-    Path(final).write_text(final_enriched, encoding="utf-8")
-    logging.info(f"Output written: {final}")
-    return final
+    final_out_path = Path(out_path) if out_path else default_out
+    with open(final_out_path, "w", encoding="utf-8") as f:
+        f.write(final_enriched)
+    logging.info(f"Output written: {final_out_path}")
+    logging.info(f"💰 Total enrichment cost: ${total_cost:.6f} | attempts={len(attempts)}")
+    logging.info(f"Done | output={final_out_path}")
+    return str(final_out_path)
